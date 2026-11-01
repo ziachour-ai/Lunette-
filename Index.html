@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>XREAL WebHID Spatial Screen</title>
+<style>
+body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
+#ui {
+position: absolute; top: 20px; left: 20px; z-index: 10;
+background: rgba(0, 0, 0, 0.85); color: #fff; padding: 15px; border-radius: 8px;
+max-width: 320px;
+}
+button {
+background: #007bff; color: white; border: none; padding: 10px 15px;
+border-radius: 4px; cursor: pointer; margin-top: 10px; width: 100%; font-weight: bold;
+}
+button:hover { background: #0056b3; }
+#status { font-size: 13px; margin-top: 8px; color: #ffeb3b; }
+</style>
+<!-- Three.js pour le rendu 3D -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+<div id="ui">
+<h3>XREAL WebHID 3DoF</h3>
+<p style="font-size: 13px;">Cliquez pour lier les lunettes et activer le pont capteur.</p>
+<button id="connect-btn">Connecter les lunettes</button>
+<div id="status">Statut : Déconnecté</div>
+</div>
+
+<script>
+let scene, camera, renderer, screenMesh;
+let hidDevice = null;
+
+function init() {
+// 1. Scène 3D et Caméra
+scene = new THREE.Scene();
+camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+camera.position.set(0, 0, 0);
+
+// 2. Rendu WebGL transparent
+renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
+document.body.appendChild(renderer.domElement);
+
+// 3. Création du contenu de l'écran virtuel
+const canvas = document.createElement('canvas');
+canvas.width = 1920; canvas.height = 1080;
+const ctx = canvas.getContext('2d');
+
+ctx.fillStyle = '#1e1e2f';
+ctx.fillRect(0, 0, 1920, 1080);
+ctx.fillStyle = '#00d2ff';
+ctx.font = 'bold 55px sans-serif';
+ctx.fillText('ÉCRAN VIRTUEL WEB-HID', 100, 150);
+ctx.fillStyle = '#ffffff';
+ctx.font = '35px sans-serif';
+ctx.fillText('• En attente des données du gyroscope...', 100, 280);
+
+const texture = new THREE.CanvasTexture(canvas);
+const geometry = new THREE.PlaneGeometry(2.13, 1.2); // Format 16:9
+const material = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide });
+
+screenMesh = new THREE.Mesh(geometry, material);
+screenMesh.position.set(0, 0, -2.5); // Placé à 2.5 mètres en face
+scene.add(screenMesh);
+
+// Gestion du redimensionnement
+window.addEventListener('resize', () => {
+camera.aspect = window.innerWidth / window.innerHeight;
+camera.updateProjectionMatrix();
+renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// Boucle de rendu continue
+renderer.setAnimationLoop(() => {
+renderer.render(scene, camera);
+});
+}
+
+async function connectGlasses() {
+try {
+document.getElementById('status').innerText = "Recherche des lunettes...";
+
+// Demande d'accès au périphérique HID (Vendor ID XREAL = 0x3318)
+const devices = await navigator.hid.requestDevice({
+filters: [{ vendorId: 0x3318 }]
+});
+
+if (devices.length === 0) {
+document.getElementById('status').innerText = "Aucun appareil sélectionné.";
+return;
+}
+
+hidDevice = devices[0];
+await hidDevice.open();
+document.getElementById('status').innerText = "Connecté : " + (hidDevice.productName || "XREAL Air 2");
+
+// Écoute des flux de données brutes envoyés par les capteurs des lunettes
+hidDevice.addEventListener("inputreport", event => {
+const { data, reportId } = event;
+parseIMUReport(data);
+});
+
+} catch (err) {
+console.error(err);
+document.getElementById('status').innerText = "Erreur : " + err.message;
+}
+}
+
+function parseIMUReport(data) {
+// Les données brutes (DataView) arrivent ici en continu.
+// Pour stabiliser l'écran, il faut extraire les quaternions ou angles de rotation
+// de l'en-tête binaire des lunettes et appliquer l'inverse à la caméra ou au mesh.
+
+// Exemple conceptuel de traitement (la structure exacte dépend de la version du firmware) :
+try {
+// Exemple d'analyse d'octets (fictif tant que le mapping exact des trames n'est pas appliqué)
+// const gyroX = data.getInt16(2, true);
+// camera.rotation.y = -gyroX * facteur_echelle;
+} catch(e) {
+console.error("Erreur de lecture du flux IMU", e);
+}
+}
+
+document.getElementById('connect-btn').addEventListener('click', connectGlasses);
+init();
+</script>
+</body>
+</html>
